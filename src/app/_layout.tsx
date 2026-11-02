@@ -11,8 +11,48 @@ import {
   BarlowCondensed_700Bold,
   BarlowCondensed_900Black,
 } from '@expo-google-fonts/barlow-condensed';
+import { AuthProvider, useAuth } from '../providers/AuthProvider';
 import { CollectionProvider } from '../providers/CollectionProvider';
+import { LoginScreen } from '../components/auth/LoginScreen';
 import { colors } from '../theme';
+
+function BootScreen() {
+  return (
+    <View style={styles.loading}>
+      <View style={styles.loadingMark}>
+        <Text style={styles.loadingGlyph}>?</Text>
+      </View>
+      <Text style={styles.loadingTitle}>HERO CARD GAME</Text>
+      <ActivityIndicator color={colors.accent} />
+    </View>
+  );
+}
+
+function AppGate() {
+  const { ready, currentUser } = useAuth();
+
+  if (!ready) return <BootScreen />;
+  if (!currentUser) return <LoginScreen />;
+
+  return (
+    <CollectionProvider key={currentUser.id}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.bg },
+          animation: 'fade',
+        }}
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="battle"
+          options={{ animation: 'slide_from_right', gestureEnabled: false }}
+        />
+        <Stack.Screen name="hero/[id]" options={{ animation: 'slide_from_right' }} />
+      </Stack>
+    </CollectionProvider>
+  );
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -26,36 +66,15 @@ export default function RootLayout() {
   // Si las fuentes fallan, seguimos con las del sistema para no bloquear
   // el juego por un problema puramente estético.
   if (!fontsLoaded && !fontError) {
-    return (
-      <View style={styles.loading}>
-        <View style={styles.loadingMark}>
-          <Text style={styles.loadingGlyph}>?</Text>
-        </View>
-        <Text style={styles.loadingTitle}>HERO CARD GAME</Text>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
+    return <BootScreen />;
   }
 
   return (
     <SafeAreaProvider>
-      <CollectionProvider>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.bg },
-            animation: 'fade',
-          }}
-        >
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="battle"
-            options={{ animation: 'slide_from_right', gestureEnabled: false }}
-          />
-          <Stack.Screen name="hero/[id]" options={{ animation: 'slide_from_right' }} />
-        </Stack>
-      </CollectionProvider>
+      <StatusBar style="light" />
+      <AuthProvider>
+        <AppGate />
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }

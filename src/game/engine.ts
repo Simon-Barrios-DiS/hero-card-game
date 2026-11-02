@@ -1,5 +1,6 @@
 import { GAME } from './config';
 import { ACTIVE_QUALITIES, getStat } from './qualities';
+import { formationBonus } from './formation';
 import { shuffle, type Rng } from './random';
 import type {
   CombatSummary,
@@ -229,6 +230,9 @@ export function revealCombat(state: MatchState): MatchState {
     throw new GameError('INVALID_PHASE', 'Todavía no se puede revelar el combate.');
   }
 
+  const playerBonus = formationBonus(state.placements.player);
+  const opponentBonus = formationBonus(state.placements.opponent);
+
   const results: DuelResult[] = state.qualities.map((quality, slotIndex) => {
     const playerCard = state.placements.player[slotIndex];
     const opponentCard = state.placements.opponent[slotIndex];
@@ -236,8 +240,8 @@ export function revealCombat(state: MatchState): MatchState {
       throw new GameError('INVALID_PHASE', 'Faltan cartas por colocar en el tablero.');
     }
 
-    const playerValue = getStat(playerCard.hero, quality);
-    const opponentValue = getStat(opponentCard.hero, quality);
+    const playerValue = getStat(playerCard.hero, quality) + playerBonus;
+    const opponentValue = getStat(opponentCard.hero, quality) + opponentBonus;
     const winner: DuelResult['winner'] =
       playerValue === opponentValue
         ? 'draw'
@@ -252,6 +256,8 @@ export function revealCombat(state: MatchState): MatchState {
       opponentCard,
       playerValue,
       opponentValue,
+      playerBonus,
+      opponentBonus,
       winner,
     };
   });

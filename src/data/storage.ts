@@ -16,6 +16,8 @@ export const emptyRecord = (): MatchRecord => ({
 export interface StoredPreferences {
   deckIds: number[];
   record: MatchRecord;
+  /** Versión del formato de mazo; las anteriores se migran al cargar. */
+  deckVersion: number;
 }
 
 export interface CachedCatalog {
@@ -55,6 +57,7 @@ export async function loadPreferences(): Promise<StoredPreferences | null> {
     return {
       deckIds: Array.from(new Set(deckIds)),
       record: parseRecord(parsed.record),
+      deckVersion: safeNumber(parsed.deckVersion, 1),
     };
   } catch {
     return null;

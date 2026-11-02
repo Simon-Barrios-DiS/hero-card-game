@@ -54,8 +54,12 @@ export interface DuelResult {
   quality: QualityId;
   playerCard: HandCard;
   opponentCard: HandCard;
+  /** Valores efectivos, ya con el bonus de formación si corresponde. */
   playerValue: number;
   opponentValue: number;
+  /** Bonus de formación aplicado a cada carta en este combate. */
+  playerBonus: number;
+  opponentBonus: number;
   winner: DuelWinner;
 }
 

@@ -35,7 +35,7 @@ export interface UseMatchOptions {
   playerDeck: Hero[];
   opponentDeck: Hero[];
   target: number;
-  onMatchEnd?: (winner: PlayerId) => void;
+  onMatchEnd?: (winner: PlayerId, playerCombatWins: number) => void;
 }
 
 export interface UseMatchResult {
@@ -152,7 +152,7 @@ export function useMatch({
     if (!state.winner) return;
     if (recordedStateRef.current === state) return;
     recordedStateRef.current = state;
-    onMatchEndRef.current?.(state.winner);
+    onMatchEndRef.current?.(state.winner, state.combatWins.player);
   }, [state]);
 
   const selectCard = useCallback((uid: string | null) => {

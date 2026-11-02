@@ -12,8 +12,10 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, radii, shadows, withAlpha } from '../theme';
 import type { DuelResult, HandCard, Hero, QualityId } from '../game/types';
 import { QUALITY_BY_ID, SCORED_QUALITIES } from '../game/qualities';
+import { heroRarity } from '../game/rarity';
 import { AppText } from './ui/AppText';
 import { HeroAvatar } from './ui/HeroAvatar';
+import { RARITY_COLORS, RarityBadge } from './ui/RarityBadge';
 
 interface DuelLaneProps {
   slotIndex: number;
@@ -97,6 +99,7 @@ export function DuelLane({
             qualityColor={quality.color}
             qualityId={qualityId}
             revealed={revealed}
+            bonus={revealed ? result?.opponentBonus ?? 0 : 0}
           />
         ) : (
           <EmptySlot label="RIVAL" color={quality.color} />
@@ -113,7 +116,11 @@ export function DuelLane({
 
       <View style={styles.slotArea}>
         {playerCard ? (
-          <PlayerCard card={playerCard} qualityId={qualityId} />
+          <PlayerCard
+            card={playerCard}
+            qualityId={qualityId}
+            bonus={revealed ? result?.playerBonus ?? 0 : 0}
+          />
         ) : (
           <EmptySlot
             label="TÚ"
@@ -165,13 +172,16 @@ function OpponentCard({
   qualityColor,
   qualityId,
   revealed,
+  bonus,
 }: {
   card: HandCard;
   qualityColor: string;
   qualityId: QualityId;
   revealed: boolean;
+  bonus: number;
 }) {
   const [progress] = useState(() => new Animated.Value(revealed ? 1 : 0));
+  const rarity = revealed ? heroRarity(card.hero) : null;
 
   useEffect(() => {
     Animated.timing(progress, {
@@ -197,14 +207,24 @@ function OpponentCard({
   });
 
   return (
-    <Animated.View style={[styles.miniCard, { transform: [{ scale }] }]}>
+    <Animated.View
+      style={[
+        styles.miniCard,
+        { transform: [{ scale }] },
+        rarity
+          ? { borderWidth: 1.5, borderColor: RARITY_COLORS[rarity].color }
+          : null,
+      ]}
+    >
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backOpacity }]}>
         <CardBack qualityColor={qualityColor} />
       </Animated.View>
 
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: faceOpacity }]}>
         <HeroAvatar hero={card.hero} style={styles.face} borderRadius={7} initialsSize={22} />
-        <MiniStats hero={card.hero} qualityId={qualityId} />
+        <MiniStats hero={card.hero} qualityId={qualityId} bonus={bonus} />
+        {rarity ? <RarityBadge rarity={rarity} size="xs" style={styles.rarityBadge} /> : null}
+        {bonus > 0 ? <BonusBadge bonus={bonus} /> : null}
       </Animated.View>
 
       <Animated.View
@@ -215,8 +235,17 @@ function OpponentCard({
   );
 }
 
-function PlayerCard({ card, qualityId }: { card: HandCard; qualityId: QualityId }) {
+function PlayerCard({
+  card,
+  qualityId,
+  bonus,
+}: {
+  card: HandCard;
+  qualityId: QualityId;
+  bonus: number;
+}) {
   const [entry] = useState(() => new Animated.Value(0));
+  const rarity = heroRarity(card.hero);
 
   useEffect(() => {
     Animated.spring(entry, {
@@ -231,6 +260,9 @@ function PlayerCard({ card, qualityId }: { card: HandCard; qualityId: QualityId 
     <Animated.View
       style={[
         styles.miniCard,
+        rarity
+          ? { borderWidth: 1.5, borderColor: RARITY_COLORS[rarity].color }
+          : null,
         {
           opacity: entry,
           transform: [
@@ -240,7 +272,9 @@ function PlayerCard({ card, qualityId }: { card: HandCard; qualityId: QualityId 
       ]}
     >
       <HeroAvatar hero={card.hero} style={styles.face} borderRadius={7} initialsSize={22} />
-      <MiniStats hero={card.hero} qualityId={qualityId} />
+      <MiniStats hero={card.hero} qualityId={qualityId} bonus={bonus} />
+      {rarity ? <RarityBadge rarity={rarity} size="xs" style={styles.rarityBadge} /> : null}
+      {bonus > 0 ? <BonusBadge bonus={bonus} /> : null}
     </Animated.View>
   );
 }
@@ -249,7 +283,15 @@ function PlayerCard({ card, qualityId }: { card: HandCard; qualityId: QualityId 
  * Los cinco stats siempre visibles sobre la carta colocada.
  * La cualidad del duelo se resalta para comparar de un vistazo.
  */
-function MiniStats({ hero, qualityId }: { hero: Hero; qualityId: QualityId }) {
+function MiniStats({
+  hero,
+  qualityId,
+  bonus = 0,
+}: {
+  hero: Hero;
+  qualityId: QualityId;
+  bonus?: number;
+}) {
   return (
     <View style={styles.miniStats} pointerEvents="none">
       {SCORED_QUALITIES.map((quality) => {
@@ -276,11 +318,26 @@ function MiniStats({ hero, qualityId }: { hero: Hero; qualityId: QualityId }) {
               color={active ? quality.color : colors.text}
               style={styles.miniStatValue}
             >
-              {hero.stats[quality.id]}
+              {hero.stats[quality.id] + bonus}
             </AppText>
           </View>
         );
       })}
+    </View>
+  );
+}
+
+function BonusBadge({ bonus }: { bonus: number }) {
+  return (
+    <View style={styles.bonusBadge} pointerEvents="none">
+      <MaterialCommunityIcons
+        name="account-group-outline"
+        size={8}
+        color={colors.gold}
+      />
+      <AppText variant="label" size={7} color={colors.gold}>
+        +{bonus}
+      </AppText>
     </View>
   );
 }
@@ -453,6 +510,27 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     overflow: 'hidden',
     backgroundColor: colors.bgSoft,
+  },
+  rarityBadge: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    zIndex: 5,
+  },
+  bonusBadge: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    zIndex: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 1,
+    paddingHorizontal: 3,
+    paddingVertical: 1,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(colors.gold, 0.45),
+    backgroundColor: 'rgba(24, 18, 4, 0.9)',
   },
   face: {
     ...StyleSheet.absoluteFill,

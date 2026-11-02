@@ -27,6 +27,7 @@ import {
   withAlpha,
 } from '../../theme';
 import { overallRating, QUALITIES } from '../../game/qualities';
+import { DECK_BLOCK_MESSAGES } from '../../game/deckRules';
 import type { Hero } from '../../game/types';
 
 export default function HeroDetailScreen() {
@@ -35,6 +36,8 @@ export default function HeroDetailScreen() {
   const {
     heroById,
     deckCount,
+    canAddToDeck,
+    isOwned,
     isInDeck,
     toggleDeckHero,
     hasOfficialToken,
@@ -111,7 +114,10 @@ export default function HeroDetailScreen() {
     notice && notice.heroId === hero.id ? notice.message : null;
   const refreshing = refreshingId === hero.id;
   const inDeck = isInDeck(hero.id);
-  const deckFull = deckCount >= GAME.deckSize;
+  const owned = isOwned(hero.id);
+  const addCheck = canAddToDeck(hero.id);
+  const canAdd = addCheck.ok;
+  const blockReason = addCheck.ok ? null : addCheck.reason;
   const alignment = alignmentInfo(current.alignment);
   const rating = overallRating(current);
 
@@ -119,10 +125,7 @@ export default function HeroDetailScreen() {
     const result = toggleDeckHero(hero.id);
     if (!result.ok) {
       setToast({
-        text:
-          result.reason === 'full'
-            ? `Mazo completo (${GAME.deckSize}). Quita otro héroe primero.`
-            : 'Ese héroe ya no está disponible.',
+        text: DECK_BLOCK_MESSAGES[result.reason],
         tone: 'error',
       });
       return;
@@ -134,6 +137,22 @@ export default function HeroDetailScreen() {
       tone: result.added ? 'success' : 'info',
     });
   };
+
+  const deckActionLabel = inDeck
+    ? 'Quitar del mazo'
+    : canAdd
+      ? 'Añadir al mazo'
+      : blockReason === 'not-owned'
+        ? 'No lo tienes'
+        : blockReason === 'ssr-limit'
+          ? 'SSR completo'
+          : blockReason === 'sr-limit'
+            ? 'SR completo'
+            : blockReason === 'regular-limit'
+              ? 'Comunes completas'
+              : blockReason === 'full'
+                ? 'Mazo completo'
+                : 'No disponible';
 
   return (
     <>
@@ -149,9 +168,21 @@ export default function HeroDetailScreen() {
             </AppText>
           </View>
           <IconButton
-            icon={inDeck ? 'check' : 'plus'}
-            label={inDeck ? 'Quitar del mazo' : 'Añadir al mazo'}
-            color={inDeck ? colors.accent : colors.text}
+            icon={inDeck ? 'check' : !owned ? 'lock-outline' : canAdd ? 'plus' : 'lock-outline'}
+            label={
+              inDeck
+                ? 'Quitar del mazo'
+                : owned
+                  ? 'Añadir al mazo'
+                  : 'No tienes este héroe'
+            }
+            color={
+              inDeck
+                ? colors.accent
+                : owned && canAdd
+                  ? colors.text
+                  : colors.textDim
+            }
             borderColor={inDeck ? withAlpha(colors.accent, 0.5) : colors.border}
             onPress={handleToggleDeck}
           />
@@ -176,7 +207,11 @@ export default function HeroDetailScreen() {
               color={publisherColor(current.publisher)}
               size="xs"
             />
-            <Tag label={alignment.label} color={alignment.color} size="xs" />
+            {owned ? (
+              <Tag label={alignment.label} color={alignment.color} size="xs" />
+            ) : (
+              <Tag label="No lo tienes" color={colors.textMuted} size="xs" />
+            )}
           </View>
 
           <View style={styles.ratingBadge}>
@@ -211,18 +246,13 @@ export default function HeroDetailScreen() {
 
         <View style={styles.deckAction}>
           <Button
-            label={
-              inDeck
-                ? 'Quitar del mazo'
-                : deckFull
-                  ? 'Mazo completo'
-                  : 'Añadir al mazo'
-            }
+            label={deckActionLabel}
             onPress={handleToggleDeck}
-            icon={inDeck ? 'close' : deckFull ? 'lock-outline' : 'plus'}
+            icon={inDeck ? 'close' : canAdd ? 'plus' : 'lock-outline'}
             variant={inDeck ? 'danger' : 'primary'}
             size="lg"
             fullWidth
+            disabled={!inDeck && !canAdd}
           />
           <AppText
             variant="caption"
@@ -232,10 +262,20 @@ export default function HeroDetailScreen() {
           >
             {inDeck
               ? `En tu mazo · ${deckCount}/${GAME.deckSize}`
-              : deckFull
-                ? `Tu mazo ya tiene ${GAME.deckSize} héroes`
+              : blockReason
+                ? DECK_BLOCK_MESSAGES[blockReason]
                 : `${deckCount}/${GAME.deckSize} héroes en tu mazo`}
           </AppText>
+          {!owned ? (
+            <Button
+              label="Ir a la tienda"
+              onPress={() => router.push('/shop')}
+              icon="storefront-outline"
+              variant="secondary"
+              size="sm"
+              fullWidth
+            />
+          ) : null}
         </View>
 
         <View style={styles.section}>

@@ -54,6 +54,10 @@ export function CombatSummary({
         ? { title: 'Combate perdido', color: colors.red, icon: 'skull-outline' as const }
         : { title: 'Combate empatado', color: colors.gold, icon: 'handshake-outline' as const };
 
+  const playerBonus = results[0]?.playerBonus ?? 0;
+  const opponentBonus = results[0]?.opponentBonus ?? 0;
+  const hasBonus = playerBonus > 0 || opponentBonus > 0;
+
   return (
     <Animated.View
       style={[
@@ -123,6 +127,25 @@ export function CombatSummary({
         </View>
       </View>
 
+      {hasBonus ? (
+        <View style={styles.bonusRow}>
+          <MaterialCommunityIcons
+            name="account-group-outline"
+            size={12}
+            color={colors.gold}
+          />
+          <AppText variant="caption" size={10} color={colors.gold}>
+            Formación:{' '}
+            {[
+              playerBonus > 0 ? 'tú +5' : null,
+              opponentBonus > 0 ? 'rival +5' : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </AppText>
+        </View>
+      ) : null}
+
       {!matchOver ? (
         <Button
           label="Siguiente combate"
@@ -175,6 +198,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bonusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(colors.gold, 0.25),
+    backgroundColor: withAlpha(colors.gold, 0.06),
   },
   textBlock: {
     flex: 1,

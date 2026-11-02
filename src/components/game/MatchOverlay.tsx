@@ -12,6 +12,7 @@ interface MatchOverlayProps {
   winner: PlayerId;
   combatWins: Record<PlayerId, number>;
   target: number;
+  tokensEarned?: number;
   onRematch: () => void;
   onExit: () => void;
 }
@@ -21,6 +22,7 @@ export function MatchOverlay({
   winner,
   combatWins,
   target,
+  tokensEarned = 0,
   onRematch,
   onExit,
 }: MatchOverlayProps) {
@@ -127,6 +129,19 @@ export function MatchOverlay({
           </View>
         </View>
 
+        {tokensEarned > 0 ? (
+          <View style={styles.tokens}>
+            <MaterialCommunityIcons
+              name="diamond-stone"
+              size={13}
+              color={colors.gold}
+            />
+            <AppText variant="caption" size={11} color={colors.gold}>
+              +{tokensEarned} tokens por rondas ganadas
+            </AppText>
+          </View>
+        ) : null}
+
         <View style={styles.buttons}>
           <Button
             label="Revancha"
@@ -221,6 +236,17 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  tokens: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(colors.gold, 0.28),
+    backgroundColor: withAlpha(colors.gold, 0.08),
   },
   buttons: {
     width: '100%',

@@ -13,10 +13,12 @@ import {
   withAlpha,
 } from '../theme';
 import { overallRating, SCORED_QUALITIES } from '../game/qualities';
+import { heroRarity } from '../game/rarity';
 import type { Hero } from '../game/types';
 import { hapticSelect } from '../utils/feedback';
 import { AppText } from './ui/AppText';
 import { HeroAvatar } from './ui/HeroAvatar';
+import { RarityBadge } from './ui/RarityBadge';
 import { Tag } from './ui/Tag';
 
 interface HeroCardProps {
@@ -25,7 +27,10 @@ interface HeroCardProps {
   onPress?: () => void;
   onToggleDeck?: () => void;
   inDeck?: boolean;
-  deckFull?: boolean;
+  /** La rareza del héroe ya no tiene hueco en el mazo. */
+  deckBlocked?: boolean;
+  /** Si es false, la carta aparece gris y bloqueada. */
+  owned?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -35,13 +40,16 @@ export function HeroCard({
   onPress,
   onToggleDeck,
   inDeck = false,
-  deckFull = false,
+  deckBlocked = false,
+  owned = true,
   style,
 }: HeroCardProps) {
   const imageHeight = Math.round(width * 1.04);
   const alignment = alignmentInfo(hero.alignment);
   const rating = overallRating(hero);
+  const rarity = heroRarity(hero);
   const showDeckButton = typeof onToggleDeck === 'function';
+  const deckIsBlocked = deckBlocked || !owned;
 
   const handlePress = () => {
     if (!onPress) return;
@@ -68,16 +76,29 @@ export function HeroCard({
         accessibilityRole="button"
         accessibilityLabel={`${hero.name}. Poder ${rating}. ${SCORED_QUALITIES.map(
           (quality) => `${quality.label} ${hero.stats[quality.id]}`,
-        ).join('. ')}`}
+        ).join('. ')}${owned ? '' : '. No lo tienes'}`}
         onPress={handlePress}
         style={({ pressed }) => [
           styles.card,
-          { borderColor: inDeck ? withAlpha(colors.accent, 0.55) : colors.border },
+          {
+            borderColor: inDeck
+              ? withAlpha(colors.accent, 0.55)
+              : owned
+                ? colors.border
+                : withAlpha(colors.textDim, 0.3),
+          },
           pressed ? styles.pressed : null,
         ]}
       >
         <View style={[styles.imageArea, { height: imageHeight }]}>
-          <HeroAvatar hero={hero} style={styles.avatar} borderRadius={0} initialsSize={52} />
+          <HeroAvatar
+            hero={hero}
+            style={[styles.avatar, owned ? null : styles.unownedAvatar]}
+            borderRadius={0}
+            initialsSize={52}
+          />
+
+          {owned ? null : <View pointerEvents="none" style={styles.unownedTint} />}
 
           <LinearGradient
             colors={['rgba(7,11,22,0)', 'rgba(7,11,22,0.55)', 'rgba(7,11,22,0.97)']}
@@ -92,6 +113,14 @@ export function HeroCard({
               size="xs"
             />
           </View>
+
+          {rarity ? (
+            <RarityBadge
+              rarity={rarity}
+              size="md"
+              style={[styles.rarityBadge, showDeckButton ? styles.rarityBadgeWithDeck : null]}
+            />
+          ) : null}
 
           <View style={styles.nameBlock}>
             <AppText
@@ -140,7 +169,11 @@ export function HeroCard({
         </View>
 
         <View style={styles.footer}>
-          <Tag label={alignment.label} color={alignment.color} size="xs" />
+          {owned ? (
+            <Tag label={alignment.label} color={alignment.color} size="xs" />
+          ) : (
+            <Tag label="No lo tienes" color={colors.textMuted} size="xs" />
+          )}
           <View style={styles.rating}>
             <MaterialCommunityIcons name="star-four-points" size={11} color={colors.gold} />
             <AppText variant="stat" size={13} color={colors.gold}>
@@ -154,7 +187,13 @@ export function HeroCard({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            inDeck ? `Quitar ${hero.name} del mazo` : `Añadir ${hero.name} al mazo`
+            inDeck
+              ? `Quitar ${hero.name} del mazo`
+              : !owned
+                ? `No tienes ${hero.name}`
+                : deckIsBlocked
+                  ? `${hero.name} no tiene hueco en el mazo`
+                  : `Añadir ${hero.name} al mazo`
           }
           onPress={handleToggle}
           hitSlop={6}
@@ -168,9 +207,15 @@ export function HeroCard({
           ]}
         >
           <MaterialCommunityIcons
-            name={inDeck ? 'check' : deckFull ? 'lock-outline' : 'plus'}
+            name={inDeck ? 'check' : deckIsBlocked ? 'lock-outline' : 'plus'}
             size={16}
-            color={inDeck ? colors.bgDeep : deckFull ? colors.textDim : colors.text}
+            color={
+              inDeck
+                ? colors.bgDeep
+                : deckIsBlocked
+                  ? colors.textDim
+                  : colors.text
+            }
           />
         </Pressable>
       ) : null}
@@ -206,6 +251,13 @@ const styles = StyleSheet.create({
   },
   avatar: {
     ...StyleSheet.absoluteFill,
+  },
+  unownedAvatar: {
+    opacity: 0.4,
+  },
+  unownedTint: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(110, 122, 145, 0.3)',
   },
   imageGradient: {
     ...StyleSheet.absoluteFill,
@@ -280,5 +332,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 3,
+  },
+  rarityBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    zIndex: 4,
+  },
+  rarityBadgeWithDeck: {
+    right: 46,
   },
 });

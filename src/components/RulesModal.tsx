@@ -149,6 +149,19 @@ export function RulesModal({ visible, onClose, target = GAME.combatsToWinMatch }
                 ))}
               </View>
 
+              <View style={styles.bonus}>
+                <MaterialCommunityIcons
+                  name="account-group-outline"
+                  size={15}
+                  color={colors.gold}
+                />
+                <AppText variant="caption" color={colors.textMuted} style={styles.tipText}>
+                  Bonus de formación: si tus 5 cartas comparten editorial y
+                  alineación moral, cada una suma +5 en todos los duelos. Ese
+                  valor puede superar 100.
+                </AppText>
+              </View>
+
               <View style={styles.tip}>
                 <MaterialCommunityIcons name="lightbulb-on-outline" size={15} color={colors.gold} />
                 <AppText variant="caption" color={colors.textMuted} style={styles.tipText}>
@@ -300,6 +313,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  bonus: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'flex-start',
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: withAlpha(colors.gold, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(colors.gold, 0.25),
   },
   tipText: {
     flex: 1,

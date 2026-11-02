@@ -12,7 +12,7 @@ import {
 import { chooseAiMove } from '../src/game/ai';
 import { GAME } from '../src/game/config';
 import { SEED_HEROES } from '../src/data/seedHeroes';
-import { mulberry32, sample, shuffle } from '../src/game/random';
+import { mulberry32, sample } from '../src/game/random';
 import type { MatchState, PlayerId } from '../src/game/types';
 
 const errors: string[] = [];
@@ -47,7 +47,6 @@ function simulateMatch(
   });
 
   let guard = 0;
-  let duels = 0;
   const duelTally: number[] = [];
 
   while (state.phase !== 'matchOver') {
@@ -89,7 +88,6 @@ function simulateMatch(
         const wins =
           (state.results?.filter((r) => r.winner === 'player').length ?? 0) +
           (state.results?.filter((r) => r.winner === 'opponent').length ?? 0);
-        duels += wins;
         check(
           state.results?.length !== 5 ||
             (state.results.filter((r) => r.winner === 'draw').length ===

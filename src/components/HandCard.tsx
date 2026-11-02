@@ -16,10 +16,12 @@ import {
   withAlpha,
 } from '../theme';
 import { overallRating, SCORED_QUALITIES } from '../game/qualities';
+import { heroRarity } from '../game/rarity';
 import type { HandCard as HandCardModel } from '../game/types';
 import { hapticSelect } from '../utils/feedback';
 import { AppText } from './ui/AppText';
 import { HeroAvatar } from './ui/HeroAvatar';
+import { RARITY_COLORS, RarityBadge } from './ui/RarityBadge';
 
 interface HandCardProps {
   card: HandCardModel;
@@ -57,6 +59,8 @@ export function HandCard({
 
   const { hero } = card;
   const rating = overallRating(hero);
+  const rarity = heroRarity(hero);
+  const rarityColor = rarity ? RARITY_COLORS[rarity].color : null;
 
   const handlePress = () => {
     if (disabled || !onPress) return;
@@ -101,10 +105,9 @@ export function HandCard({
           {
             borderColor: selected
               ? colors.accent
-              : disabled
-                ? 'rgba(255,255,255,0.07)'
-                : 'rgba(255,255,255,0.13)',
-            borderWidth: selected ? 1.5 : 1,
+              : rarityColor ??
+                (disabled ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.13)'),
+            borderWidth: selected || rarityColor ? 1.5 : 1,
           },
           selected ? styles.selected : null,
           disabled ? styles.disabled : null,
@@ -113,6 +116,14 @@ export function HandCard({
       >
         <View style={styles.image}>
           <HeroAvatar hero={hero} style={styles.avatar} borderRadius={0} initialsSize={34} />
+          <View style={styles.cardMarks}>
+            {rarity ? <RarityBadge rarity={rarity} size="sm" /> : null}
+            {selected ? (
+              <View style={styles.selectedMark}>
+                <MaterialCommunityIcons name="check-bold" size={9} color={colors.bgDeep} />
+              </View>
+            ) : null}
+          </View>
           <View style={styles.ratingBadge}>
             <MaterialCommunityIcons name="star-four-points" size={9} color={colors.gold} />
             <AppText variant="stat" size={11} color={colors.gold}>
@@ -172,11 +183,6 @@ export function HandCard({
           })}
         </View>
 
-        {selected ? (
-          <View style={styles.selectedMark}>
-            <MaterialCommunityIcons name="check-bold" size={9} color={colors.bgDeep} />
-          </View>
-        ) : null}
       </Pressable>
     </Animated.View>
   );
@@ -229,6 +235,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(4,8,16,0.78)',
     borderWidth: 1,
     borderColor: withAlpha(colors.gold, 0.35),
+  },
+  cardMarks: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    zIndex: 4,
   },
   publisherBar: {
     position: 'absolute',
@@ -284,9 +299,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
   },
   selectedMark: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
     width: 15,
     height: 15,
     borderRadius: 8,

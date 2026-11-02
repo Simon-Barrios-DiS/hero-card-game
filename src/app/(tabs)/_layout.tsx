@@ -39,6 +39,32 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="deck"
+        options={{
+          title: 'Mazo',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons
+              name="cards-outline"
+              size={size}
+              color={typeof color === 'string' ? color : colors.textMuted}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="shop"
+        options={{
+          title: 'Tienda',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons
+              name="storefront-outline"
+              size={size}
+              color={typeof color === 'string' ? color : colors.textMuted}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="compendium"
         options={{
           title: 'Compendio',

@@ -15,10 +15,14 @@ export const GAME = {
   combatsToWinMatch: 10,
   /** Combates para la partida rápida (útil para probar). */
   quickMatchTarget: 3,
-  /** Héroes distintos que puede tener un mazo. */
-  deckSize: 10,
-  /** Mínimo de cartas para poder jugar. */
-  minDeckSize: 5,
+  /** Tokens que se ganan por cada ronda (combate) ganada. */
+  tokensPerCombatWin: 5,
+  /** Tokens iniciales de una cuenta nueva. */
+  startingTokens: 50,
+  /** Héroes distintos que puede tener un mazo: 1 SSR + 9 SR + 20 comunes. */
+  deckSize: 30,
+  /** Mínimo de cartas para poder jugar: el mazo debe estar completo. */
+  minDeckSize: 30,
   /** Valor máximo de una cualidad. */
   maxStat: 100,
   /** Milisegundos de espera del rival para que sus jugadas se vean. */

@@ -8,26 +8,57 @@ import React, {
   type ReactNode,
 } from 'react';
 import { GAME } from '../game/config';
-import { buildDefaultDeck } from '../game/deck';
-import { shuffle } from '../game/random';
+import {
+  buildFilledDeck,
+  checkDeckAdd,
+  countDeckTiers,
+  deckPower as calculateDeckPower,
+  isDeckComplete,
+  type DeckBlockReason,
+  type DeckCheck,
+  type DeckCounts,
+} from '../game/deckRules';
+import {
+  CARDS_PER_PACK,
+  EMPTY_TUTORIAL,
+  PACK_OFFERS,
+  createStarterPlan,
+  drawPacks,
+  updateTutorial,
+  type PackOffer,
+  type PackPurchaseResult,
+  type TutorialState,
+} from '../game/shop';
 import { SEED_HEROES } from '../data/seedHeroes';
 import { fetchCatalog, HAS_OFFICIAL_TOKEN } from '../data/api';
 import {
   emptyRecord,
   loadCatalogCache,
-  loadPreferences,
   saveCatalogCache,
-  savePreferences,
 } from '../data/storage';
+import { useAuth } from './AuthProvider';
 import type { Hero, MatchRecord } from '../game/types';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Catálogo local: la selección curada siempre gana sobre el remoto. */
+function mergeCatalog(remote: readonly Hero[]): Hero[] {
+  const byId = new Map<number, Hero>();
+  for (const hero of remote) byId.set(hero.id, hero);
+  for (const hero of SEED_HEROES) byId.set(hero.id, hero);
+  return [...byId.values()];
+}
 
 export type CatalogSource = 'seed' | 'cache' | 'network';
 
 export type ToggleDeckResult =
   | { ok: true; added: boolean }
-  | { ok: false; reason: 'full' | 'not-found' };
+  | { ok: false; reason: DeckBlockReason };
+
+export interface FillDeckResult {
+  deckSize: number;
+  complete: boolean;
+}
 
 interface CollectionContextValue {
   heroes: Hero[];
@@ -37,29 +68,38 @@ interface CollectionContextValue {
   catalogSource: CatalogSource;
   lastUpdated: number | null;
   refreshCatalog: () => Promise<void>;
-  preferencesReady: boolean;
+  catalogReady: boolean;
+  tokens: number;
+  tutorial: TutorialState;
+  ownedCount: number;
+  isOwned: (heroId: number) => boolean;
   deckIds: number[];
   deckHeroes: Hero[];
   deckCount: number;
+  deckCounts: DeckCounts;
+  deckPower: number;
+  deckComplete: boolean;
   isInDeck: (heroId: number) => boolean;
+  canAddToDeck: (heroId: number) => DeckCheck;
   toggleDeckHero: (heroId: number) => ToggleDeckResult;
-  fillDeck: () => void;
+  fillDeck: () => FillDeckResult;
+  clearDeck: () => void;
+  buyPacks: (offerId: PackOffer['id']) => PackPurchaseResult;
   record: MatchRecord;
-  registerMatch: (result: 'win' | 'loss' | 'draw') => void;
+  registerMatch: (result: 'win' | 'loss' | 'draw', combatsWon?: number) => number;
   hasOfficialToken: boolean;
 }
 
 const CollectionContext = createContext<CollectionContextValue | null>(null);
 
 export function CollectionProvider({ children }: { children: ReactNode }) {
+  const { currentUser, updateCurrentUser } = useAuth();
   const [remoteHeroes, setRemoteHeroes] = useState<Hero[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogSource, setCatalogSource] = useState<CatalogSource>('seed');
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const [deckIds, setDeckIds] = useState<number[]>([]);
-  const [record, setRecord] = useState<MatchRecord>(emptyRecord);
-  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [catalogReady, setCatalogReady] = useState(false);
 
   const loadRemoteCatalog = useCallback(async () => {
     setLoadingCatalog(true);
@@ -87,18 +127,8 @@ export function CollectionProvider({ children }: { children: ReactNode }) {
     let active = true;
 
     (async () => {
-      const [storedPreferences, cachedCatalog] = await Promise.all([
-        loadPreferences(),
-        loadCatalogCache(),
-      ]);
+      const cachedCatalog = await loadCatalogCache();
       if (!active) return;
-
-      if (storedPreferences) {
-        setDeckIds(storedPreferences.deckIds);
-        setRecord(storedPreferences.record);
-      } else {
-        setDeckIds(buildDefaultDeck(SEED_HEROES, GAME.deckSize));
-      }
 
       if (cachedCatalog) {
         setRemoteHeroes(cachedCatalog.heroes);
@@ -106,7 +136,7 @@ export function CollectionProvider({ children }: { children: ReactNode }) {
         setCatalogSource('cache');
       }
 
-      setPreferencesReady(true);
+      setCatalogReady(true);
 
       const cacheIsFresh =
         cachedCatalog !== null &&
@@ -123,21 +153,38 @@ export function CollectionProvider({ children }: { children: ReactNode }) {
     };
   }, [loadRemoteCatalog]);
 
-  useEffect(() => {
-    if (!preferencesReady) return;
-    void savePreferences({ deckIds, record });
-  }, [deckIds, record, preferencesReady]);
-
-  const heroes = useMemo(() => {
-    const byId = new Map<number, Hero>(remoteHeroes.map((hero) => [hero.id, hero]));
-    // La selección curada siempre gana: nombres y editoriales limpios.
-    for (const seed of SEED_HEROES) byId.set(seed.id, seed);
-    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [remoteHeroes]);
+  const heroes = useMemo(
+    () => mergeCatalog(remoteHeroes).sort((a, b) => a.name.localeCompare(b.name)),
+    [remoteHeroes],
+  );
 
   const heroById = useMemo(
     () => new Map(heroes.map((hero) => [hero.id, hero])),
     [heroes],
+  );
+
+  const deckIds = useMemo(
+    () => currentUser?.deckIds ?? [],
+    [currentUser?.deckIds],
+  );
+  const record = currentUser?.record ?? emptyRecord();
+  const tokens = currentUser?.tokens ?? 0;
+  const tutorial = currentUser?.tutorial ?? EMPTY_TUTORIAL;
+  const ownsAllCards = currentUser?.ownsAllCards ?? false;
+
+  const ownedIdSet = useMemo(
+    () => new Set(currentUser?.ownedHeroIds ?? []),
+    [currentUser?.ownedHeroIds],
+  );
+
+  const isOwned = useCallback(
+    (heroId: number) => ownsAllCards || ownedIdSet.has(heroId),
+    [ownsAllCards, ownedIdSet],
+  );
+
+  const ownedHeroes = useMemo(
+    () => heroes.filter((hero) => isOwned(hero.id)),
+    [heroes, isOwned],
   );
 
   const deckHeroes = useMemo(() => {
@@ -152,54 +199,166 @@ export function CollectionProvider({ children }: { children: ReactNode }) {
     return result.slice(0, GAME.deckSize);
   }, [deckIds, heroById]);
 
+  const deckCounts = useMemo(() => countDeckTiers(deckHeroes), [deckHeroes]);
+  const deckPower = useMemo(() => calculateDeckPower(deckHeroes), [deckHeroes]);
+  const deckComplete = useMemo(() => isDeckComplete(deckHeroes), [deckHeroes]);
+
   const isInDeck = useCallback(
     (heroId: number) => deckIds.includes(heroId),
     [deckIds],
   );
 
+  const commitDeckIds = useCallback(
+    (updater: (previous: number[]) => number[]) => {
+      updateCurrentUser((user) => ({
+        ...user,
+        deckIds: updater(user.deckIds ?? []),
+      }));
+    },
+    [updateCurrentUser],
+  );
+
+  const canAddToDeck = useCallback(
+    (heroId: number): DeckCheck => {
+      const hero = heroById.get(heroId);
+      if (!hero) return { ok: false, reason: 'not-found' };
+      if (!isOwned(heroId)) return { ok: false, reason: 'not-owned' };
+      return checkDeckAdd(deckHeroes, hero);
+    },
+    [deckHeroes, heroById, isOwned],
+  );
+
   const toggleDeckHero = useCallback(
     (heroId: number): ToggleDeckResult => {
-      if (!heroById.has(heroId)) return { ok: false, reason: 'not-found' };
-
       if (deckIds.includes(heroId)) {
-        setDeckIds((previous) => previous.filter((id) => id !== heroId));
+        commitDeckIds((previous) => previous.filter((id) => id !== heroId));
         return { ok: true, added: false };
       }
 
-      if (deckIds.length >= GAME.deckSize) {
-        return { ok: false, reason: 'full' };
-      }
+      const check = canAddToDeck(heroId);
+      if (!check.ok) return check;
 
-      setDeckIds((previous) =>
+      commitDeckIds((previous) =>
         previous.includes(heroId) ? previous : [...previous, heroId],
       );
       return { ok: true, added: true };
     },
-    [deckIds, heroById],
+    [canAddToDeck, commitDeckIds, deckIds],
   );
 
-  const fillDeck = useCallback(() => {
-    setDeckIds((previous) => {
-      const selected = new Set(previous);
-      const next = [...previous];
-      for (const hero of shuffle(heroes)) {
-        if (next.length >= GAME.deckSize) break;
-        if (selected.has(hero.id)) continue;
-        selected.add(hero.id);
-        next.push(hero.id);
-      }
-      return next;
-    });
-  }, [heroes]);
+  const fillDeck = useCallback((): FillDeckResult => {
+    const selected = deckIds
+      .map((id) => heroById.get(id))
+      .filter((hero): hero is Hero => Boolean(hero));
+    const next = buildFilledDeck(selected, ownedHeroes);
+    commitDeckIds(() => next.map((hero) => hero.id));
+    return { deckSize: next.length, complete: isDeckComplete(next) };
+  }, [commitDeckIds, deckIds, heroById, ownedHeroes]);
 
-  const registerMatch = useCallback((result: 'win' | 'loss' | 'draw') => {
-    setRecord((previous) => ({
-      wins: previous.wins + (result === 'win' ? 1 : 0),
-      losses: previous.losses + (result === 'loss' ? 1 : 0),
-      draws: previous.draws + (result === 'draw' ? 1 : 0),
-      matches: previous.matches + 1,
-    }));
-  }, []);
+  const clearDeck = useCallback(() => commitDeckIds(() => []), [commitDeckIds]);
+
+  const registerMatch = useCallback(
+    (result: 'win' | 'loss' | 'draw', combatsWon = 0): number => {
+      const earned =
+        Math.max(0, Math.floor(combatsWon)) * GAME.tokensPerCombatWin;
+      updateCurrentUser((user) => ({
+        ...user,
+        tokens: Math.max(0, user.tokens + earned),
+        record: {
+          wins: user.record.wins + (result === 'win' ? 1 : 0),
+          losses: user.record.losses + (result === 'loss' ? 1 : 0),
+          draws: user.record.draws + (result === 'draw' ? 1 : 0),
+          matches: user.record.matches + 1,
+        },
+      }));
+      return earned;
+    },
+    [updateCurrentUser],
+  );
+
+  const buyPacks = useCallback(
+    (offerId: PackOffer['id']): PackPurchaseResult => {
+      if (!currentUser) {
+        return { ok: false, error: 'Inicia sesión para comprar.' };
+      }
+
+      const offer = PACK_OFFERS.find((item) => item.id === offerId);
+      if (!offer) {
+        return { ok: false, error: 'Ese sobre no existe.' };
+      }
+      if (!catalogReady || heroes.length < CARDS_PER_PACK) {
+        return { ok: false, error: 'El catálogo todavía se está cargando.' };
+      }
+      if (currentUser.tokens < offer.price) {
+        return { ok: false, error: 'No tienes tokens suficientes.' };
+      }
+
+      const tutorialState = currentUser.tutorial;
+      if (!tutorialState.completed) {
+        if (offer.packs !== 1 && offer.packs !== 5) {
+          return {
+            ok: false,
+            error: 'Completa el tutorial: compra 1 sobre y el pack de 5.',
+          };
+        }
+        if (offer.packs === 1 && tutorialState.singleBought) {
+          return {
+            ok: false,
+            error: 'Ya compraste el sobre del tutorial. Ahora toca el pack de 5.',
+          };
+        }
+        if (offer.packs === 5 && tutorialState.fiveBought) {
+          return {
+            ok: false,
+            error: 'Ya compraste el pack de 5. Ahora toca el sobre.',
+          };
+        }
+      }
+
+      const fresh =
+        !currentUser.ownsAllCards &&
+        (currentUser.ownedHeroIds?.length ?? 0) === 0;
+      const starterPlan =
+        fresh && (currentUser.starterPlan?.length ?? 0) === 0
+          ? createStarterPlan(heroes)
+          : currentUser.starterPlan ?? [];
+
+      const draw = drawPacks({
+        catalog: heroes,
+        packs: offer.packs,
+        ownedHeroIds: currentUser.ownedHeroIds ?? [],
+        ownsAllCards: currentUser.ownsAllCards,
+        starterPlan,
+      });
+      const nextTokens =
+        currentUser.tokens - offer.price + draw.refund;
+      const nextTutorial = updateTutorial(
+        currentUser.tutorial,
+        offer.packs,
+      );
+
+      updateCurrentUser((user) => ({
+        ...user,
+        tokens: nextTokens,
+        ownedHeroIds: draw.ownedHeroIds,
+        starterPlan: draw.starterPlan,
+        tutorial: nextTutorial,
+      }));
+
+      return {
+        ok: true,
+        offer,
+        cards: draw.cards,
+        newCount: draw.newCount,
+        duplicateCount: draw.duplicateCount,
+        refund: draw.refund,
+        spent: offer.price,
+        tokens: nextTokens,
+        tutorial: nextTutorial,
+      };
+    },
+    [catalogReady, currentUser, heroes, updateCurrentUser],
+  );
 
   const refreshCatalog = useCallback(async () => {
     await loadRemoteCatalog();
@@ -214,13 +373,23 @@ export function CollectionProvider({ children }: { children: ReactNode }) {
       catalogSource,
       lastUpdated,
       refreshCatalog,
-      preferencesReady,
+      catalogReady,
+      tokens,
+      tutorial,
+      ownedCount: ownedHeroes.length,
+      isOwned,
       deckIds,
       deckHeroes,
       deckCount: deckHeroes.length,
+      deckCounts,
+      deckPower,
+      deckComplete,
       isInDeck,
+      canAddToDeck,
       toggleDeckHero,
       fillDeck,
+      clearDeck,
+      buyPacks,
       record,
       registerMatch,
       hasOfficialToken: HAS_OFFICIAL_TOKEN,
@@ -233,12 +402,22 @@ export function CollectionProvider({ children }: { children: ReactNode }) {
       catalogSource,
       lastUpdated,
       refreshCatalog,
-      preferencesReady,
+      catalogReady,
+      tokens,
+      tutorial,
+      ownedHeroes.length,
+      isOwned,
       deckIds,
       deckHeroes,
+      deckCounts,
+      deckPower,
+      deckComplete,
       isInDeck,
+      canAddToDeck,
       toggleDeckHero,
       fillDeck,
+      clearDeck,
+      buyPacks,
       record,
       registerMatch,
     ],

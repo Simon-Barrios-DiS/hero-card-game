@@ -15,6 +15,7 @@ import { MatchOverlay } from '../components/game/MatchOverlay';
 import { useCollection } from '../providers/CollectionProvider';
 import { GAME, isMatchTarget } from '../game/config';
 import { buildOpponentDeck, resolvePlayerDeck } from '../game/deck';
+import { formationBonus } from '../game/formation';
 import { useMatch } from '../hooks/useMatch';
 import { hapticImpact } from '../utils/feedback';
 import { colors, radii, spacing, withAlpha } from '../theme';
@@ -25,9 +26,9 @@ export default function BattleRoute() {
     ? Number(params.target)
     : GAME.combatsToWinMatch;
 
-  const { preferencesReady, deckCount, heroes } = useCollection();
+  const { catalogReady, deckComplete, heroes } = useCollection();
 
-  if (!preferencesReady) {
+  if (!catalogReady) {
     return (
       <BattleGuard
         icon="cards-playing-outline"
@@ -38,14 +39,14 @@ export default function BattleRoute() {
     );
   }
 
-  if (deckCount < GAME.minDeckSize || heroes.length < GAME.handSize) {
+  if (!deckComplete || heroes.length < GAME.handSize) {
     return (
       <BattleGuard
         icon="alert-circle-outline"
         title="Mazo incompleto"
-        message={`Necesitas al menos ${GAME.minDeckSize} héroes para combatir.`}
-        actionLabel="Ir al compendio"
-        onAction={() => router.replace('/compendium')}
+        message={`Tu mazo debe tener ${GAME.deckSize} héroes: 1 SSR, 9 SR y 20 comunes. Consigue héroes en la tienda.`}
+        actionLabel="Ir al mazo"
+        onAction={() => router.replace('/deck')}
       />
     );
   }
@@ -57,6 +58,7 @@ function BattleSession({ target }: { target: number }) {
   const { heroes, deckHeroes, registerMatch } = useCollection();
   const [rulesVisible, setRulesVisible] = useState(false);
   const [toast, setToast] = useState<ToastData | null>(null);
+  const [tokensEarned, setTokensEarned] = useState(0);
 
   // El mazo se congela al entrar: aunque el catálogo remoto termine de
   // cargar, la partida en curso no cambia de cartas.
@@ -74,13 +76,18 @@ function BattleSession({ target }: { target: number }) {
     playerDeck,
     opponentDeck,
     target,
-    onMatchEnd: (winner) => {
-      registerMatch(winner === 'player' ? 'win' : 'loss');
+    onMatchEnd: (winner, playerCombatWins) => {
+      const earned = registerMatch(
+        winner === 'player' ? 'win' : 'loss',
+        playerCombatWins,
+      );
+      setTokensEarned(earned);
     },
   });
 
   const { state } = match;
   const phase = state.phase;
+  const playerFormation = formationBonus(state.placements.player);
   const playerCard = useMemo(
     () =>
       match.selectedCardUid
@@ -227,6 +234,19 @@ function BattleSession({ target }: { target: number }) {
             })}
           </View>
 
+          {playerFormation > 0 ? (
+            <View style={styles.formationNote}>
+              <MaterialCommunityIcons
+                name="account-group-outline"
+                size={13}
+                color={colors.gold}
+              />
+              <AppText variant="caption" size={10} color={colors.gold}>
+                Formación completa: mismo origen y alineación · +5 en cada duelo
+              </AppText>
+            </View>
+          ) : null}
+
           {phase !== 'placing' && !state.results ? (
             <View style={styles.revealNote}>
               <MaterialCommunityIcons
@@ -272,7 +292,11 @@ function BattleSession({ target }: { target: number }) {
         winner={state.winner ?? 'player'}
         combatWins={state.combatWins}
         target={target}
-        onRematch={match.restart}
+        tokensEarned={tokensEarned}
+        onRematch={() => {
+          setTokensEarned(0);
+          match.restart();
+        }}
         onExit={() => router.replace('/')}
       />
 
@@ -491,6 +515,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 4,
+  },
+  formationNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(colors.gold, 0.28),
+    backgroundColor: withAlpha(colors.gold, 0.06),
   },
   guard: {
     flex: 1,

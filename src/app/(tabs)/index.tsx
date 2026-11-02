@@ -17,6 +17,7 @@ import { HeroAvatar } from '../../components/ui/HeroAvatar';
 import { Toast, type ToastData } from '../../components/ui/Toast';
 import { RulesModal } from '../../components/RulesModal';
 import { useCollection } from '../../providers/CollectionProvider';
+import { useAuth } from '../../providers/AuthProvider';
 import { GAME } from '../../game/config';
 import { DATA_ATTRIBUTION } from '../../data/api';
 import { colors, radii, spacing, withAlpha } from '../../theme';
@@ -27,18 +28,27 @@ export default function HomeScreen() {
     heroes,
     deckHeroes,
     deckCount,
-    preferencesReady,
+    deckComplete,
+    catalogReady,
+    tokens,
+    ownedCount,
+    isOwned,
     fillDeck,
     record,
   } = useCollection();
+  const { currentUser, logout } = useAuth();
   const [rulesVisible, setRulesVisible] = useState(false);
   const [toast, setToast] = useState<ToastData | null>(null);
 
-  const deckReady = deckCount >= GAME.minDeckSize;
+  const deckReady = deckComplete;
+  const ownedHeroes = useMemo(
+    () => heroes.filter((hero) => isOwned(hero.id)),
+    [heroes, isOwned],
+  );
   const featured = useMemo<Hero[]>(() => {
     if (deckHeroes.length > 0) return deckHeroes.slice(0, 3);
-    return heroes.slice(0, 3);
-  }, [deckHeroes, heroes]);
+    return ownedHeroes.slice(0, 3);
+  }, [deckHeroes, ownedHeroes]);
 
   const notify = (text: string, tone: ToastData['tone'] = 'info') => {
     setToast({ text, tone });
@@ -53,8 +63,17 @@ export default function HomeScreen() {
   };
 
   const handleFillDeck = () => {
-    fillDeck();
-    notify('Héroes añadidos a tu mazo.', 'success');
+    const result = fillDeck();
+    if (result.deckSize === 0) {
+      notify('Compra sobres en la tienda para conseguir héroes.', 'error');
+      return;
+    }
+    notify(
+      result.complete
+        ? 'Mazo completado.'
+        : `Mazo rellenado: ${result.deckSize}/${GAME.deckSize}. Faltan héroes.`,
+      result.complete ? 'success' : 'info',
+    );
   };
 
   const deckPct = Math.min(100, (deckCount / GAME.deckSize) * 100);
@@ -75,14 +94,31 @@ export default function HomeScreen() {
               Universo de superhéroes
             </AppText>
             <AppText variant="caption" color={colors.textMuted}>
-              Duelos de cualidades
+              {currentUser ? `@${currentUser.username}` : 'Duelos de cualidades'}
             </AppText>
           </View>
-          <IconButton
-            icon="help-circle-outline"
-            label="Cómo jugar"
-            onPress={() => setRulesVisible(true)}
-          />
+          <View style={styles.brandActions}>
+            <View style={styles.tokenPill}>
+              <MaterialCommunityIcons
+                name="diamond-stone"
+                size={12}
+                color={colors.gold}
+              />
+              <AppText variant="stat" size={12} color={colors.gold}>
+                {tokens}
+              </AppText>
+            </View>
+            <IconButton
+              icon="help-circle-outline"
+              label="Cómo jugar"
+              onPress={() => setRulesVisible(true)}
+            />
+            <IconButton
+              icon="logout"
+              label="Cerrar sesión"
+              onPress={logout}
+            />
+          </View>
         </View>
 
         <View style={styles.intro}>
@@ -106,11 +142,11 @@ export default function HomeScreen() {
                 variant="caption"
                 color={deckReady ? colors.green : colors.gold}
               >
-                {preferencesReady
+                {catalogReady
                   ? deckReady
                     ? 'Listo para combatir'
-                    : `Necesitas al menos ${GAME.minDeckSize} héroes`
-                  : 'Cargando preferencias…'}
+                    : `Faltan ${Math.max(0, GAME.deckSize - deckCount)} cartas`
+                  : 'Cargando catálogo…'}
               </AppText>
             </View>
             <View style={styles.deckCount}>
@@ -156,15 +192,15 @@ export default function HomeScreen() {
               ) : null}
               {deckCount === 0 ? (
                 <AppText variant="caption" color={colors.textDim}>
-                  Añade héroes desde el compendio.
+                  Compra sobres en la tienda.
                 </AppText>
               ) : null}
             </View>
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Editar mazo en el compendio"
-              onPress={() => router.push('/compendium')}
+              accessibilityLabel="Editar mazo"
+              onPress={() => router.push('/deck')}
               style={({ pressed }) => [
                 styles.editButton,
                 pressed ? { opacity: 0.7 } : null,
@@ -182,7 +218,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {!preferencesReady ? (
+        {!catalogReady ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.accent} />
             <AppText variant="caption" color={colors.textMuted}>
@@ -209,6 +245,25 @@ export default function HomeScreen() {
                   fullWidth
                 />
               </>
+            ) : ownedCount === 0 ? (
+              <>
+                <Button
+                  label="Comprar sobres"
+                  onPress={() => router.push('/shop')}
+                  icon="storefront-outline"
+                  variant="gold"
+                  size="lg"
+                  fullWidth
+                />
+                <Button
+                  label="Elegir mis héroes"
+                  onPress={() => router.push('/deck')}
+                  icon="cards-outline"
+                  variant="secondary"
+                  size="md"
+                  fullWidth
+                />
+              </>
             ) : (
               <>
                 <Button
@@ -221,8 +276,8 @@ export default function HomeScreen() {
                 />
                 <Button
                   label="Elegir mis héroes"
-                  onPress={() => router.push('/compendium')}
-                  icon="view-grid-outline"
+                  onPress={() => router.push('/deck')}
+                  icon="cards-outline"
                   variant="secondary"
                   size="md"
                   fullWidth
@@ -274,9 +329,14 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <AppText variant="caption" size={10} color={colors.textDim} align="center">
-          {DATA_ATTRIBUTION}
-        </AppText>
+        <View style={styles.footerNote}>
+          <AppText variant="caption" size={10} color={colors.textDim} align="center">
+            {DATA_ATTRIBUTION}
+          </AppText>
+          <AppText variant="caption" size={9} color={colors.textDim} align="center">
+            Beta 1.0 · Solo local/offline
+          </AppText>
+        </View>
       </ScrollScreen>
 
       <Toast data={toast} onDismiss={() => setToast(null)} />
@@ -445,6 +505,22 @@ const styles = StyleSheet.create({
   brandText: {
     flex: 1,
     gap: 1,
+  },
+  brandActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tokenPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(colors.gold, 0.3),
+    backgroundColor: withAlpha(colors.gold, 0.07),
   },
   intro: {
     gap: 2,
@@ -671,6 +747,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: spacing.md,
     gap: spacing.sm,
+  },
+  footerNote: {
+    alignItems: 'center',
+    gap: 2,
   },
   recordHeader: {
     flexDirection: 'row',

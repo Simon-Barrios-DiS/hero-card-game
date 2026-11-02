@@ -1,6 +1,6 @@
 import { GAME } from './config';
 import { heroPower } from './qualities';
-import { sample, shuffle, type Rng } from './random';
+import { shuffle, type Rng } from './random';
 import type { Hero } from './types';
 
 export function uniqueHeroes(heroes: readonly Hero[]): Hero[] {
@@ -10,15 +10,6 @@ export function uniqueHeroes(heroes: readonly Hero[]): Hero[] {
     seen.add(hero.id);
     return true;
   });
-}
-
-/** Mazo inicial sugerido (aleatorio, sin repetidos). */
-export function buildDefaultDeck(
-  catalog: readonly Hero[],
-  size: number = GAME.deckSize,
-  rng: Rng = Math.random,
-): number[] {
-  return sample(uniqueHeroes(catalog), size, rng).map((hero) => hero.id);
 }
 
 /**
